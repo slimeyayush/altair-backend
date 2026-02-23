@@ -30,7 +30,7 @@ public class SecurityConfig {
 
     @Autowired
     private JwtAuthenticationFilter jwtAuthFilter;
-    @Value("${FRONTEND_URL}")
+    @Value("${FRONTEND_URL:http://localhost:5173}")
     private String frontendUrl;
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
