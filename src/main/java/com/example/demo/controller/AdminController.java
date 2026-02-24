@@ -136,12 +136,23 @@ public class AdminController {
             return ResponseEntity.ok(savedProduct);
         }).orElseGet(() -> ResponseEntity.notFound().build());
     }
+    // 1. Update the GET mapping to include the ID
     @GetMapping("/admins")
     public ResponseEntity<List<AdminDTO>> getAllAdmins() {
         List<AdminDTO> adminList = adminUserRepository.findAll().stream()
-                .map(admin -> new AdminDTO(admin.getUsername()))
+                .map(admin -> new AdminDTO(admin.getId(), admin.getUsername()))
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(adminList);
+    }
+
+    // 2. Add the DELETE endpoint
+    @DeleteMapping("/admins/{id}")
+    public ResponseEntity<?> deleteAdmin(@PathVariable Long id) {
+        if (!adminUserRepository.existsById(id)) {
+            return ResponseEntity.notFound().build();
+        }
+        adminUserRepository.deleteById(id);
+        return ResponseEntity.ok().build();
     }
 }

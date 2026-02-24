@@ -1,3 +1,4 @@
 package com.example.demo.DTO;
 
-public record AdminDTO(String username) {}
+// Include the ID
+public record AdminDTO(Long id, String username) {}
