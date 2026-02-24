@@ -2,6 +2,7 @@ package com.example.demo.controller;
 
 
 
+import com.example.demo.DTO.AdminDTO;
 import com.example.demo.Model.AdminUser;
 import com.example.demo.Model.Order;
 import com.example.demo.Model.Product;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/admin")
@@ -115,5 +117,31 @@ public class AdminController {
             product.setActive(!product.isActive());
             return ResponseEntity.ok(productRepository.save(product));
         }).orElse(ResponseEntity.notFound().build());
+    }
+    @PutMapping("/products/{id}")
+    public ResponseEntity<?> updateProduct(@PathVariable Long id, @RequestBody Product productDetails) {
+        return productRepository.findById(id).map(existingProduct -> {
+            existingProduct.setName(productDetails.getName());
+            existingProduct.setDescription(productDetails.getDescription());
+            existingProduct.setPrice(productDetails.getPrice());
+            existingProduct.setOldPrice(productDetails.getOldPrice());
+            existingProduct.setStockQuantity(productDetails.getStockQuantity());
+            existingProduct.setCategory(productDetails.getCategory());
+            existingProduct.setTag(productDetails.getTag());
+            existingProduct.setImageUrl(productDetails.getImageUrl());
+
+            // Note: Do not overwrite the 'active' or 'id' fields here
+
+            Product savedProduct = productRepository.save(existingProduct);
+            return ResponseEntity.ok(savedProduct);
+        }).orElseGet(() -> ResponseEntity.notFound().build());
+    }
+    @GetMapping("/admins")
+    public ResponseEntity<List<AdminDTO>> getAllAdmins() {
+        List<AdminDTO> adminList = adminUserRepository.findAll().stream()
+                .map(admin -> new AdminDTO(admin.getUsername()))
+                .collect(Collectors.toList());
+
+        return ResponseEntity.ok(adminList);
     }
 }
