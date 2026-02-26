@@ -47,7 +47,13 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             }
         } catch (Exception e) {
-            System.err.println("Firebase Auth Failed: " + e.getMessage());
+            // 4. Force error exposure
+            System.err.println("🔥 FIREBASE AUTH CRASHED: " + e.getMessage());
+            e.printStackTrace();
+
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.getWriter().write("Firebase Validation Failed: " + e.getMessage());
+            return;
         }
 
         filterChain.doFilter(request, response);
