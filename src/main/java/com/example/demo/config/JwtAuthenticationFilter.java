@@ -1,10 +1,6 @@
 package com.example.demo.config;
 
-
-
 import com.example.demo.service.JwtService;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.auth.FirebaseToken;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -30,34 +26,40 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
 
-        String authHeader = request.getHeader("Authorization");
-
-        // 1. Skip if no Bearer token OR if it's an Admin route (Admin filter handles those)
-        if (authHeader == null || !authHeader.startsWith("Bearer ") || request.getRequestURI().startsWith("/api/admin")) {
+        // 1. SKIP if this is not an Admin route. Let Firebase handle the rest.
+        if (!request.getRequestURI().startsWith("/api/admin")) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        String idToken = authHeader.substring(7);
+        final String authHeader = request.getHeader("Authorization");
+
+        // 2. SKIP if no Bearer token
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        final String jwt = authHeader.substring(7);
 
         try {
-            // 2. Verify the token with Firebase
-            FirebaseToken decodedToken = FirebaseAuth.getInstance().verifyIdToken(idToken);
-            String email = decodedToken.getEmail();
+            // 3. Extract data using your JwtService
+            final String username = jwtService.extractUsername(jwt);
+            final String role = jwtService.extractRole(jwt);
 
-            if (email != null) {
-                // 3. Create Authentication for Spring Security
-                UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                        email, null, Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER"))
-                );
-                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
-                // 4. Set the context! Without this, you get a 403
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+            if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                if (jwtService.isTokenValid(jwt)) {
+                    // 4. Set the Admin Security Context
+                    SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + role);
+                    UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                            username, null, Collections.singletonList(authority)
+                    );
+                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(authToken);
+                }
             }
         } catch (Exception e) {
-            System.err.println("Firebase Auth Failed: " + e.getMessage());
-            // Optional: response.setStatus(HttpServletResponse.SC_UNAUTHORIZED); return;
+            System.err.println("JWT Validation failed: " + e.getMessage());
         }
 
         filterChain.doFilter(request, response);
