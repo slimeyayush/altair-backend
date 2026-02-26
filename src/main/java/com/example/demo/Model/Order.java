@@ -1,7 +1,5 @@
 package com.example.demo.Model;
 
-
-
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.Data;
@@ -18,8 +16,17 @@ public class Order {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @ManyToOne
+    @JoinColumn(name = "customer_id", nullable = true)
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private Customer customer;
+
     @Column(nullable = false)
     private String customerEmail;
+
+    // NEW: Add the shipping address column
+    @Column(length = 500)
+    private String shippingAddress;
 
     @Column(nullable = false)
     private LocalDateTime orderDate = LocalDateTime.now();
@@ -32,7 +39,7 @@ public class Order {
     private OrderStatus status = OrderStatus.PENDING;
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
-    @JsonManagedReference // Handles bidirectional JSON serialization
+    @JsonManagedReference
     private List<OrderItem> items = new ArrayList<>();
 
     public enum OrderStatus {

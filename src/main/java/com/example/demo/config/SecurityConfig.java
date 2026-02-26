@@ -1,8 +1,5 @@
 package com.example.demo.config;
 
-
-
-
 import com.example.demo.repo.AdminUserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,8 +27,17 @@ public class SecurityConfig {
 
     @Autowired
     private JwtAuthenticationFilter jwtAuthFilter;
+
+    // NEW: Inject the Firebase filter you just created
+    @Autowired
+    private FirebaseAuthenticationFilter firebaseAuthFilter;
+
     @Value("${FRONTEND_URL:http://localhost:5173}")
     private String frontendUrl;
+
+    @Autowired
+    private AdminUserRepository adminUserRepository;
+
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
@@ -42,9 +48,14 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/login").permitAll() // Public login
                         .requestMatchers("/api/admin/**").hasRole("ADMIN") // Only tokens with ROLE_ADMIN
+
+                        // NEW: Require authentication (Firebase) for the customer checkout
+                        .requestMatchers("/api/orders/checkout").authenticated()
+
                         .anyRequest().permitAll()
                 )
-                // Add the JWT filter before the standard authentication filter
+                // NEW: Add both filters before the standard authentication filter
+                .addFilterBefore(firebaseAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
@@ -54,9 +65,7 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // Use the dynamic variable here
         configuration.setAllowedOrigins(List.of(frontendUrl));
-
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
         configuration.setAllowCredentials(true);
@@ -65,16 +74,12 @@ public class SecurityConfig {
         source.registerCorsConfiguration("/**", configuration);
         return source;
     }
-    @Autowired
-    private AdminUserRepository adminUserRepository;
 
-    // 1. Add BCrypt Encoder Bean
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
-    // 2. Replace your hardcoded UserDetailsService with this database-driven one
     @Bean
     public UserDetailsService userDetailsService() {
         return username -> adminUserRepository.findByUsername(username)

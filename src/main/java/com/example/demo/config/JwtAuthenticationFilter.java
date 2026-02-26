@@ -32,7 +32,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         final String jwt;
         final String username;
         final String role;
-
+        if (!request.getRequestURI().startsWith("/api/admin")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;

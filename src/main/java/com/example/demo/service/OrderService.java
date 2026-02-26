@@ -8,9 +8,12 @@ import com.example.demo.DTO.OrderRequestDTO;
 import com.example.demo.Model.Order;
 import com.example.demo.Model.OrderItem;
 import com.example.demo.Model.Product;
+import com.example.demo.repo.CustomerRepository;
 import com.example.demo.repo.OrderRepository;
 import com.example.demo.repo.ProductRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,13 +28,29 @@ public class OrderService {
     @Autowired
     private ProductRepository productRepository;
 
+    @Autowired
+    private CustomerRepository customerRepository;
+
     @Transactional
     public Order createPendingOrder(OrderRequestDTO requestDTO) {
         Order order = new Order();
+
+        // 1. Set the email and address for guest checkouts / WhatsApp reference
         order.setCustomerEmail(requestDTO.getCustomerEmail());
+        order.setShippingAddress(requestDTO.getShippingAddress()); // NEW: Map the address
+
+        // 2. Link the database Customer if the user is authenticated via Firebase
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && !auth.getPrincipal().equals("anonymousUser")) {
+            String identifier = auth.getName();
+            customerRepository.findByEmail(identifier)
+                    .or(() -> customerRepository.findByPhoneNumber(identifier))
+                    .ifPresent(order::setCustomer);
+        }
 
         BigDecimal total = BigDecimal.ZERO;
 
+        // 3. Process items securely
         for (OrderItemRequestDTO itemDTO : requestDTO.getItems()) {
             Product product = productRepository.findById(itemDTO.getProductId())
                     .orElseThrow(() -> new RuntimeException("Product ID " + itemDTO.getProductId() + " not found"));
@@ -52,7 +71,15 @@ public class OrderService {
             total = total.add(lineTotal);
         }
 
+        // 4. Add flat 500 shipping fee if cart isn't empty
+//        if (total.compareTo(BigDecimal.ZERO) > 0) {
+//            total = total.add(BigDecimal.valueOf(500));
+//        }
+
+        // 5. Finalize and save
         order.setTotalAmount(total);
+        order.setStatus(Order.OrderStatus.PENDING);
+
         return orderRepository.save(order);
     }
     @Transactional
