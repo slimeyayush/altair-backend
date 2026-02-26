@@ -43,21 +43,20 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
-                // JWT is stateless, so disable sessions
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/login").permitAll() // Public login
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN") // Only tokens with ROLE_ADMIN
+                        .requestMatchers("/api/auth/login").permitAll() // Admin Login
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN") // Admin Panel
 
-                        // NEW: Require authentication (Firebase) for the customer checkout
+                        // PROTECT THE CART: Only Firebase users can access DB cart
+                        .requestMatchers("/api/cart/**").authenticated()
                         .requestMatchers("/api/orders/checkout").authenticated()
 
                         .anyRequest().permitAll()
                 )
-                // NEW: Add both filters before the standard authentication filter
+                // Firebase filter first, then Admin filter
                 .addFilterBefore(firebaseAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
-
         return http.build();
     }
 

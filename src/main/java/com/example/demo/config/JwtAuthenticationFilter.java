@@ -3,6 +3,8 @@ package com.example.demo.config;
 
 
 import com.example.demo.service.JwtService;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseToken;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -28,40 +30,34 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
 
-        final String authHeader = request.getHeader("Authorization");
-        final String jwt;
-        final String username;
-        final String role;
-        if (!request.getRequestURI().startsWith("/api/admin")) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+        String authHeader = request.getHeader("Authorization");
+
+        // 1. Skip if no Bearer token OR if it's an Admin route (Admin filter handles those)
+        if (authHeader == null || !authHeader.startsWith("Bearer ") || request.getRequestURI().startsWith("/api/admin")) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        jwt = authHeader.substring(7);
+        String idToken = authHeader.substring(7);
 
         try {
-            username = jwtService.extractUsername(jwt);
-            role = jwtService.extractRole(jwt);
+            // 2. Verify the token with Firebase
+            FirebaseToken decodedToken = FirebaseAuth.getInstance().verifyIdToken(idToken);
+            String email = decodedToken.getEmail();
 
-            if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                if (jwtService.isTokenValid(jwt)) {
-                    // Convert the role string into a Spring Security Authority
-                    SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + role);
+            if (email != null) {
+                // 3. Create Authentication for Spring Security
+                UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                        email, null, Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER"))
+                );
+                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
-                    UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                            username, null, Collections.singletonList(authority)
-                    );
-                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                    SecurityContextHolder.getContext().setAuthentication(authToken);
-                }
+                // 4. Set the context! Without this, you get a 403
+                SecurityContextHolder.getContext().setAuthentication(authentication);
             }
         } catch (Exception e) {
-            // Token is invalid or expired
-            System.out.println("JWT Validation failed: " + e.getMessage());
+            System.err.println("Firebase Auth Failed: " + e.getMessage());
+            // Optional: response.setStatus(HttpServletResponse.SC_UNAUTHORIZED); return;
         }
 
         filterChain.doFilter(request, response);

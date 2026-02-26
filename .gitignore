@@ -12,7 +12,7 @@ target/
 .settings
 .springBeans
 .sts4-cache
-firebase-service-account.json
+
 ### IntelliJ IDEA ###
 .idea
 *.iws
@@ -28,6 +28,6 @@ firebase-service-account.json
 build/
 !**/src/main/**/build/
 !**/src/test/**/build/
-
+firebase-service-account.json
 ### VS Code ###
 .vscode/
