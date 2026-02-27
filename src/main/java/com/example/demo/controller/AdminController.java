@@ -1,7 +1,5 @@
 package com.example.demo.controller;
 
-
-
 import com.example.demo.DTO.AdminDTO;
 import com.example.demo.Model.AdminUser;
 import com.example.demo.Model.Order;
@@ -21,7 +19,6 @@ import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/admin")
-
 public class AdminController {
 
     @Autowired
@@ -32,6 +29,7 @@ public class AdminController {
 
     @Autowired
     private OrderService orderService;
+
     @Autowired
     private AdminUserRepository adminUserRepository;
 
@@ -61,6 +59,7 @@ public class AdminController {
     public List<Order> getAllOrders() {
         return orderRepository.findAll();
     }
+
     @DeleteMapping("/inventory/{id}")
     public ResponseEntity<?> deleteProduct(@PathVariable Long id) {
         try {
@@ -91,6 +90,38 @@ public class AdminController {
         }).orElse(ResponseEntity.notFound().build());
     }
 
+    // NEW: Cancel Order Endpoint
+    @PostMapping("/orders/{id}/cancel")
+    public ResponseEntity<?> cancelOrder(@PathVariable Long id) {
+        try {
+            Order order = orderRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Order not found"));
+
+            String currentStatus = order.getStatus().toString();
+
+            if ("CANCELLED".equals(currentStatus)) {
+                return ResponseEntity.badRequest().body("Order is already cancelled.");
+            }
+
+            // Restock items ONLY if the order had already deducted them (Paid, Shipped, Delivered)
+            if ("PAID".equals(currentStatus) || "SHIPPED".equals(currentStatus) || "DELIVERED".equals(currentStatus)) {
+                order.getItems().forEach(item -> {
+                    Product product = item.getProduct();
+                    product.setStockQuantity(product.getStockQuantity() + item.getQuantity());
+                    productRepository.save(product);
+                });
+            }
+
+            // Update status safely using the Enum
+            order.setStatus(Order.OrderStatus.valueOf("CANCELLED"));
+            orderRepository.save(order);
+
+            return ResponseEntity.ok(order);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Failed to cancel order: " + e.getMessage());
+        }
+    }
+
     // --- Inventory ---
     @GetMapping("/inventory")
     public List<Product> getInventory() {
@@ -104,6 +135,7 @@ public class AdminController {
             return ResponseEntity.ok(productRepository.save(product));
         }).orElse(ResponseEntity.notFound().build());
     }
+
     @PostMapping("/products")
     public ResponseEntity<Product> createProduct(@RequestBody Product product) {
         // Ensure ID is null so Hibernate knows to INSERT rather than UPDATE
@@ -111,6 +143,7 @@ public class AdminController {
         Product savedProduct = productRepository.save(product);
         return ResponseEntity.ok(savedProduct);
     }
+
     @PutMapping("/inventory/{id}/toggle-visibility")
     public ResponseEntity<Product> toggleProductVisibility(@PathVariable Long id) {
         return productRepository.findById(id).map(product -> {
@@ -118,6 +151,7 @@ public class AdminController {
             return ResponseEntity.ok(productRepository.save(product));
         }).orElse(ResponseEntity.notFound().build());
     }
+
     @PutMapping("/products/{id}")
     public ResponseEntity<?> updateProduct(@PathVariable Long id, @RequestBody Product productDetails) {
         return productRepository.findById(id).map(existingProduct -> {
@@ -136,6 +170,7 @@ public class AdminController {
             return ResponseEntity.ok(savedProduct);
         }).orElseGet(() -> ResponseEntity.notFound().build());
     }
+
     // 1. Update the GET mapping to include the ID
     @GetMapping("/admins")
     public ResponseEntity<List<AdminDTO>> getAllAdmins() {
