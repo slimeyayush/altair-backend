@@ -138,8 +138,16 @@ public class AdminController {
 
     @PostMapping("/products")
     public ResponseEntity<Product> createProduct(@RequestBody Product product) {
-        // Ensure ID is null so Hibernate knows to INSERT rather than UPDATE
         product.setId(null);
+
+        // Link the parent product to each child variant
+        if (product.getVariants() != null) {
+            product.getVariants().forEach(variant -> variant.setProduct(product));
+        }
+        if (product.getAdditionalImages() != null) {
+            product.getAdditionalImages().forEach(img -> img.setProduct(product));
+        }
+
         Product savedProduct = productRepository.save(product);
         return ResponseEntity.ok(savedProduct);
     }
@@ -155,16 +163,31 @@ public class AdminController {
     @PutMapping("/products/{id}")
     public ResponseEntity<?> updateProduct(@PathVariable Long id, @RequestBody Product productDetails) {
         return productRepository.findById(id).map(existingProduct -> {
+            // 1. Update standard fields
             existingProduct.setName(productDetails.getName());
             existingProduct.setDescription(productDetails.getDescription());
             existingProduct.setPrice(productDetails.getPrice());
             existingProduct.setOldPrice(productDetails.getOldPrice());
-            existingProduct.setStockQuantity(productDetails.getStockQuantity());
+            existingProduct.setStockQuantity(productDetails.getStockQuantity()); // Keep as a total/fallback stock
             existingProduct.setCategory(productDetails.getCategory());
             existingProduct.setTag(productDetails.getTag());
             existingProduct.setImageUrl(productDetails.getImageUrl());
 
-            // Note: Do not overwrite the 'active' or 'id' fields here
+            // 2. Update Variants safely
+            existingProduct.getVariants().clear();
+            if (productDetails.getVariants() != null) {
+                productDetails.getVariants().forEach(variant -> {
+                    variant.setProduct(existingProduct); // Link to parent
+                    existingProduct.getVariants().add(variant);
+                });
+            }
+            existingProduct.getAdditionalImages().clear();
+            if (productDetails.getAdditionalImages() != null) {
+                productDetails.getAdditionalImages().forEach(img -> {
+                    img.setProduct(existingProduct);
+                    existingProduct.getAdditionalImages().add(img);
+                });
+            }
 
             Product savedProduct = productRepository.save(existingProduct);
             return ResponseEntity.ok(savedProduct);

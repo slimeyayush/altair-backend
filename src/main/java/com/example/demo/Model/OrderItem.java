@@ -1,7 +1,5 @@
 package com.example.demo.Model;
 
-
-
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import jakarta.persistence.*;
 import lombok.Data;
@@ -29,4 +27,10 @@ public class OrderItem {
 
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal priceAtPurchase;
+
+    // NEW: Stores the selected configuration (e.g., "Type: Nasal Mask, Size: Medium")
+    // Inside OrderItem.java, add this relationship
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "variant_id")
+    private ProductVariant productVariant;
 }

@@ -2,8 +2,12 @@ package com.example.demo.Model;
 
 
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
+
 import lombok.Data;
 
 @Entity
@@ -39,4 +43,14 @@ public class Product {
     // Update this line in Product.java
     @Column(nullable = false, columnDefinition = "boolean default true")
     private boolean isActive = true;
+
+    // Add this inside your Product.java class
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonManagedReference
+    private List<ProductVariant> variants = new ArrayList<>();
+
+    // Add this inside your Product.java class
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonManagedReference
+    private List<ProductImage> additionalImages = new ArrayList<>();
 }

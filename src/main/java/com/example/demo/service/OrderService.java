@@ -1,13 +1,11 @@
 package com.example.demo.service;
 
-
-
-
 import com.example.demo.DTO.OrderItemRequestDTO;
 import com.example.demo.DTO.OrderRequestDTO;
 import com.example.demo.Model.Order;
 import com.example.demo.Model.OrderItem;
 import com.example.demo.Model.Product;
+import com.example.demo.Model.ProductVariant;
 import com.example.demo.repo.CustomerRepository;
 import com.example.demo.repo.OrderRepository;
 import com.example.demo.repo.ProductRepository;
@@ -37,9 +35,9 @@ public class OrderService {
 
         // 1. Set the email and address for guest checkouts / WhatsApp reference
         order.setCustomerEmail(requestDTO.getCustomerEmail());
-        order.setShippingAddress(requestDTO.getShippingAddress()); // NEW: Map the address
+        order.setShippingAddress(requestDTO.getShippingAddress());
 
-        // 2. Link the database Customer if the user is authenticated via Firebase
+        // 2. Link the database Customer if the user is authenticated
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.isAuthenticated() && !auth.getPrincipal().equals("anonymousUser")) {
             String identifier = auth.getName();
@@ -55,33 +53,51 @@ public class OrderService {
             Product product = productRepository.findById(itemDTO.getProductId())
                     .orElseThrow(() -> new RuntimeException("Product ID " + itemDTO.getProductId() + " not found"));
 
-            if (product.getStockQuantity() < itemDTO.getQuantity()) {
-                throw new RuntimeException("Insufficient stock for product: " + product.getName());
-            }
-
             OrderItem orderItem = new OrderItem();
             orderItem.setOrder(order);
             orderItem.setProduct(product);
             orderItem.setQuantity(itemDTO.getQuantity());
-            orderItem.setPriceAtPurchase(product.getPrice());
 
+            BigDecimal itemPrice = product.getPrice();
+
+            // Handle proper database-driven Variant Logic
+            if (itemDTO.getVariantId() != null) {
+                ProductVariant selectedVariant = product.getVariants().stream()
+                        .filter(v -> v.getId().equals(itemDTO.getVariantId()))
+                        .findFirst()
+                        .orElseThrow(() -> new RuntimeException("Variant ID " + itemDTO.getVariantId() + " not found"));
+
+                if (selectedVariant.getStockQuantity() < itemDTO.getQuantity()) {
+                    throw new RuntimeException("Insufficient stock for variant: " + selectedVariant.getVariantType() + " " + selectedVariant.getVariantSize());
+                }
+
+                // Use variant price if an override exists
+                if (selectedVariant.getPriceOverride() != null) {
+                    itemPrice = selectedVariant.getPriceOverride();
+                }
+
+                orderItem.setProductVariant(selectedVariant);
+            } else {
+                // Fallback to base product logic if no variant is selected
+                if (product.getStockQuantity() < itemDTO.getQuantity()) {
+                    throw new RuntimeException("Insufficient stock for product: " + product.getName());
+                }
+            }
+
+            orderItem.setPriceAtPurchase(itemPrice);
             order.getItems().add(orderItem);
 
-            BigDecimal lineTotal = product.getPrice().multiply(BigDecimal.valueOf(itemDTO.getQuantity()));
+            BigDecimal lineTotal = itemPrice.multiply(BigDecimal.valueOf(itemDTO.getQuantity()));
             total = total.add(lineTotal);
         }
 
-        // 4. Add flat 500 shipping fee if cart isn't empty
-//        if (total.compareTo(BigDecimal.ZERO) > 0) {
-//            total = total.add(BigDecimal.valueOf(500));
-//        }
-
-        // 5. Finalize and save
+        // 4. Finalize and save
         order.setTotalAmount(total);
         order.setStatus(Order.OrderStatus.PENDING);
 
         return orderRepository.save(order);
     }
+
     @Transactional
     public Order confirmOrderPayment(Long orderId) {
         Order order = orderRepository.findById(orderId)
@@ -93,12 +109,25 @@ public class OrderService {
 
         // Deduct inventory only upon payment confirmation
         for (OrderItem item : order.getItems()) {
-            Product product = item.getProduct();
-            if (product.getStockQuantity() < item.getQuantity()) {
-                throw new RuntimeException("Stock depleted before payment for: " + product.getName());
+            if (item.getProductVariant() != null) {
+                // Deduct from specific variant stock
+                ProductVariant variant = item.getProductVariant();
+                if (variant.getStockQuantity() < item.getQuantity()) {
+                    throw new RuntimeException("Stock depleted before payment for variant: " + variant.getVariantType() + " " + variant.getVariantSize());
+                }
+                variant.setStockQuantity(variant.getStockQuantity() - item.getQuantity());
+
+                // Saving the parent product cascades the update to the variant
+                productRepository.save(item.getProduct());
+            } else {
+                // Deduct from base product stock
+                Product product = item.getProduct();
+                if (product.getStockQuantity() < item.getQuantity()) {
+                    throw new RuntimeException("Stock depleted before payment for: " + product.getName());
+                }
+                product.setStockQuantity(product.getStockQuantity() - item.getQuantity());
+                productRepository.save(product);
             }
-            product.setStockQuantity(product.getStockQuantity() - item.getQuantity());
-            productRepository.save(product);
         }
 
         order.setStatus(Order.OrderStatus.PAID);
