@@ -1,7 +1,5 @@
 package com.example.demo.Model;
 
-
-
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
@@ -12,7 +10,7 @@ import lombok.Data;
 
 @Entity
 @Table(name = "products")
-@Data // Lombok generates getters, setters, and constructors
+@Data
 public class Product {
 
     @Id
@@ -21,6 +19,9 @@ public class Product {
 
     @Column(nullable = false)
     private String name;
+
+    // Added Brand field
+    private String brand;
 
     @Column(columnDefinition = "TEXT")
     private String description;
@@ -40,16 +41,13 @@ public class Product {
     @Column(name = "image_url")
     private String imageUrl;
 
-    // Update this line in Product.java
     @Column(nullable = false, columnDefinition = "boolean default true")
     private boolean isActive = true;
 
-    // Add this inside your Product.java class
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonManagedReference
     private List<ProductVariant> variants = new ArrayList<>();
 
-    // Add this inside your Product.java class
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonManagedReference
     private List<ProductImage> additionalImages = new ArrayList<>();

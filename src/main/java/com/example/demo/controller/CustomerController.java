@@ -1,10 +1,7 @@
 package com.example.demo.controller;
 
-
-
 import com.example.demo.Model.CartItem;
 import com.example.demo.Model.Customer;
-import com.example.demo.Model.Product;
 import com.example.demo.repo.CustomerRepository;
 import com.example.demo.repo.ProductRepository;
 import org.springframework.http.ResponseEntity;
@@ -27,13 +24,39 @@ public class CustomerController {
         this.productRepository = productRepository;
     }
 
+    // NEW: Dedicated sync endpoint triggered strictly on login
+    @PostMapping("/sync")
+    @Transactional
+    public ResponseEntity<?> syncCustomer() {
+        String identifier = SecurityContextHolder.getContext().getAuthentication().getName();
+
+        if (identifier == null || identifier.equals("anonymousUser")) {
+            return ResponseEntity.badRequest().body("No authenticated user found");
+        }
+
+        // Check if customer exists, create if they do not
+        Customer customer = customerRepository.findByEmail(identifier)
+                .orElseGet(() -> customerRepository.findByPhoneNumber(identifier).orElse(null));
+
+        if (customer == null) {
+            Customer newCustomer = new Customer();
+            if (identifier.contains("@")) {
+                newCustomer.setEmail(identifier);
+            } else {
+                newCustomer.setPhoneNumber(identifier);
+            }
+            customerRepository.save(newCustomer);
+        }
+
+        return ResponseEntity.ok("Customer profile synced");
+    }
+
+    // EXISTING: Untouched cart sync logic
     @PostMapping("/sync-cart")
     @Transactional
     public ResponseEntity<?> syncCart(@RequestBody List<Map<String, Integer>> localCart) {
-        // 1. Get identifier (Email or Phone) from the Firebase token via Security Context
         String identifier = SecurityContextHolder.getContext().getAuthentication().getName();
 
-        // 2. Find or Create the Customer
         Customer customer = customerRepository.findByEmail(identifier)
                 .orElseGet(() -> customerRepository.findByPhoneNumber(identifier)
                         .orElseGet(() -> {
@@ -46,10 +69,8 @@ public class CustomerController {
                             return customerRepository.save(newCustomer);
                         }));
 
-        // 3. Clear existing DB cart (simplified sync: local overrides/merges into DB)
         customer.getCartItems().clear();
 
-        // 4. Rebuild the cart from the incoming React payload
         for (Map<String, Integer> item : localCart) {
             Long productId = Long.valueOf(item.get("productId"));
             Integer quantity = item.get("quantity");
@@ -64,8 +85,6 @@ public class CustomerController {
         }
 
         customerRepository.save(customer);
-
-        // Return the updated list of items to React
         return ResponseEntity.ok(customer.getCartItems());
     }
 }

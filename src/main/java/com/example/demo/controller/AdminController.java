@@ -2,9 +2,11 @@ package com.example.demo.controller;
 
 import com.example.demo.DTO.AdminDTO;
 import com.example.demo.Model.AdminUser;
+import com.example.demo.Model.Customer;
 import com.example.demo.Model.Order;
 import com.example.demo.Model.Product;
 import com.example.demo.repo.AdminUserRepository;
+import com.example.demo.repo.CustomerRepository;
 import com.example.demo.repo.OrderRepository;
 import com.example.demo.repo.ProductRepository;
 import com.example.demo.service.OrderService;
@@ -26,6 +28,9 @@ public class AdminController {
 
     @Autowired
     private ProductRepository productRepository;
+
+    @Autowired
+    private CustomerRepository customerRepository;
 
     @Autowired
     private OrderService orderService;
@@ -165,6 +170,7 @@ public class AdminController {
         return productRepository.findById(id).map(existingProduct -> {
             // 1. Update standard fields
             existingProduct.setName(productDetails.getName());
+            existingProduct.setBrand(productDetails.getBrand());
             existingProduct.setDescription(productDetails.getDescription());
             existingProduct.setPrice(productDetails.getPrice());
             existingProduct.setOldPrice(productDetails.getOldPrice());
@@ -212,5 +218,12 @@ public class AdminController {
         }
         adminUserRepository.deleteById(id);
         return ResponseEntity.ok().build();
+    }
+
+
+    @GetMapping("/customers")
+    public ResponseEntity<List<Customer>> getAllCustomers() {
+        List<Customer> customers = customerRepository.findAll();
+        return ResponseEntity.ok(customers);
     }
 }
