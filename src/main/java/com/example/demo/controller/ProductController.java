@@ -5,7 +5,9 @@ package com.example.demo.controller;
 
 
 
+import com.example.demo.Model.Category;
 import com.example.demo.Model.Product;
+import com.example.demo.repo.CategoryRepository;
 import com.example.demo.repo.ProductRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +22,13 @@ public class ProductController {
 
     @Autowired
     private ProductRepository productRepository;
+    @Autowired
+    private CategoryRepository categoryRepository;
+
+    @GetMapping("/categories")
+    public ResponseEntity<List<Category>> getAllCategories() {
+        return ResponseEntity.ok(categoryRepository.findAll());
+    }
 
     // Homepage grid - Active only
     @GetMapping
