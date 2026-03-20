@@ -95,7 +95,6 @@ public class AdminController {
         }).orElse(ResponseEntity.notFound().build());
     }
 
-    // NEW: Cancel Order Endpoint
     @PostMapping("/orders/{id}/cancel")
     public ResponseEntity<?> cancelOrder(@PathVariable Long id) {
         try {
@@ -108,16 +107,23 @@ public class AdminController {
                 return ResponseEntity.badRequest().body("Order is already cancelled.");
             }
 
-            // Restock items ONLY if the order had already deducted them (Paid, Shipped, Delivered)
+            // Restock items ONLY if the order had already deducted them
             if ("PAID".equals(currentStatus) || "SHIPPED".equals(currentStatus) || "DELIVERED".equals(currentStatus)) {
                 order.getItems().forEach(item -> {
-                    Product product = item.getProduct();
-                    product.setStockQuantity(product.getStockQuantity() + item.getQuantity());
-                    productRepository.save(product);
+                    if (item.getProductVariant() != null) {
+                        // Restock the linked product (e.g., the mask)
+                        Product linkedProduct = item.getProductVariant().getLinkedProduct();
+                        linkedProduct.setStockQuantity(linkedProduct.getStockQuantity() + item.getQuantity());
+                        productRepository.save(linkedProduct);
+                    } else {
+                        // Restock the base product
+                        Product product = item.getProduct();
+                        product.setStockQuantity(product.getStockQuantity() + item.getQuantity());
+                        productRepository.save(product);
+                    }
                 });
             }
 
-            // Update status safely using the Enum
             order.setStatus(Order.OrderStatus.valueOf("CANCELLED"));
             orderRepository.save(order);
 
@@ -142,19 +148,30 @@ public class AdminController {
     }
 
     @PostMapping("/products")
-    public ResponseEntity<Product> createProduct(@RequestBody Product product) {
-        product.setId(null);
+    public ResponseEntity<?> createProduct(@RequestBody Product product) {
+        try {
+            product.setId(null);
 
-        // Link the parent product to each child variant
-        if (product.getVariants() != null) {
-            product.getVariants().forEach(variant -> variant.setProduct(product));
-        }
-        if (product.getAdditionalImages() != null) {
-            product.getAdditionalImages().forEach(img -> img.setProduct(product));
-        }
+            // Link the parent product to each child variant and resolve the linkedProduct
+            if (product.getVariants() != null) {
+                product.getVariants().forEach(variant -> {
+                    variant.setParentProduct(product);
+                    if (variant.getLinkedProduct() != null && variant.getLinkedProduct().getId() != null) {
+                        Product linked = productRepository.findById(variant.getLinkedProduct().getId())
+                                .orElseThrow(() -> new RuntimeException("Linked product ID " + variant.getLinkedProduct().getId() + " not found."));
+                        variant.setLinkedProduct(linked);
+                    }
+                });
+            }
+            if (product.getAdditionalImages() != null) {
+                product.getAdditionalImages().forEach(img -> img.setProduct(product));
+            }
 
-        Product savedProduct = productRepository.save(product);
-        return ResponseEntity.ok(savedProduct);
+            Product savedProduct = productRepository.save(product);
+            return ResponseEntity.ok(savedProduct);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error saving product: " + e.getMessage());
+        }
     }
 
     @PutMapping("/inventory/{id}/toggle-visibility")
@@ -168,13 +185,12 @@ public class AdminController {
     @PutMapping("/products/{id}")
     public ResponseEntity<?> updateProduct(@PathVariable Long id, @RequestBody Product productDetails) {
         return productRepository.findById(id).map(existingProduct -> {
-            // 1. Update standard fields
             existingProduct.setName(productDetails.getName());
             existingProduct.setBrand(productDetails.getBrand());
             existingProduct.setDescription(productDetails.getDescription());
             existingProduct.setPrice(productDetails.getPrice());
             existingProduct.setOldPrice(productDetails.getOldPrice());
-            existingProduct.setStockQuantity(productDetails.getStockQuantity()); // Keep as a total/fallback stock
+            existingProduct.setStockQuantity(productDetails.getStockQuantity());
             existingProduct.setCategory(productDetails.getCategory());
             existingProduct.setTag(productDetails.getTag());
             existingProduct.setImageUrl(productDetails.getImageUrl());
@@ -183,7 +199,12 @@ public class AdminController {
             existingProduct.getVariants().clear();
             if (productDetails.getVariants() != null) {
                 productDetails.getVariants().forEach(variant -> {
-                    variant.setProduct(existingProduct); // Link to parent
+                    variant.setParentProduct(existingProduct); // Link to parent
+                    if (variant.getLinkedProduct() != null && variant.getLinkedProduct().getId() != null) {
+                        Product linked = productRepository.findById(variant.getLinkedProduct().getId())
+                                .orElseThrow(() -> new RuntimeException("Linked product ID " + variant.getLinkedProduct().getId() + " not found."));
+                        variant.setLinkedProduct(linked);
+                    }
                     existingProduct.getVariants().add(variant);
                 });
             }
@@ -200,7 +221,6 @@ public class AdminController {
         }).orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    // 1. Update the GET mapping to include the ID
     @GetMapping("/admins")
     public ResponseEntity<List<AdminDTO>> getAllAdmins() {
         List<AdminDTO> adminList = adminUserRepository.findAll().stream()
@@ -210,7 +230,6 @@ public class AdminController {
         return ResponseEntity.ok(adminList);
     }
 
-    // 2. Add the DELETE endpoint
     @DeleteMapping("/admins/{id}")
     public ResponseEntity<?> deleteAdmin(@PathVariable Long id) {
         if (!adminUserRepository.existsById(id)) {
@@ -219,7 +238,6 @@ public class AdminController {
         adminUserRepository.deleteById(id);
         return ResponseEntity.ok().build();
     }
-
 
     @GetMapping("/customers")
     public ResponseEntity<List<Customer>> getAllCustomers() {

@@ -20,7 +20,6 @@ public class Product {
     @Column(nullable = false)
     private String name;
 
-    // Added Brand field
     private String brand;
 
     @Column(columnDefinition = "TEXT")
@@ -31,12 +30,13 @@ public class Product {
 
     private BigDecimal oldPrice;
 
+    // Master stock. If this is a standalone mask, its stock lives here.
     @Column(nullable = false)
     private Integer stockQuantity;
 
     private String category;
 
-    private String tag; // e.g., "Hot", "New", "Sale"
+    private String tag;
 
     @Column(name = "image_url")
     private String imageUrl;
@@ -44,11 +44,12 @@ public class Product {
     @Column(nullable = false, columnDefinition = "boolean default true")
     private boolean isActive = true;
 
-    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
-    @JsonManagedReference
+    // Mapped to the new 'parentProduct' field in ProductVariant
+    @OneToMany(mappedBy = "parentProduct", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonManagedReference("product-variants")
     private List<ProductVariant> variants = new ArrayList<>();
 
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
-    @JsonManagedReference
+    @JsonManagedReference("product-images")
     private List<ProductImage> additionalImages = new ArrayList<>();
 }

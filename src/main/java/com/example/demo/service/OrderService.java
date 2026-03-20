@@ -33,11 +33,9 @@ public class OrderService {
     public Order createPendingOrder(OrderRequestDTO requestDTO) {
         Order order = new Order();
 
-        // 1. Set the email and address for guest checkouts / WhatsApp reference
         order.setCustomerEmail(requestDTO.getCustomerEmail());
         order.setShippingAddress(requestDTO.getShippingAddress());
 
-        // 2. Link the database Customer if the user is authenticated
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.isAuthenticated() && !auth.getPrincipal().equals("anonymousUser")) {
             String identifier = auth.getName();
@@ -48,7 +46,6 @@ public class OrderService {
 
         BigDecimal total = BigDecimal.ZERO;
 
-        // 3. Process items securely
         for (OrderItemRequestDTO itemDTO : requestDTO.getItems()) {
             Product product = productRepository.findById(itemDTO.getProductId())
                     .orElseThrow(() -> new RuntimeException("Product ID " + itemDTO.getProductId() + " not found"));
@@ -67,13 +64,18 @@ public class OrderService {
                         .findFirst()
                         .orElseThrow(() -> new RuntimeException("Variant ID " + itemDTO.getVariantId() + " not found"));
 
-                if (selectedVariant.getStockQuantity() < itemDTO.getQuantity()) {
-                    throw new RuntimeException("Insufficient stock for variant: " + selectedVariant.getVariantType() + " " + selectedVariant.getVariantSize());
+                // We check the stock of the linked physical product (e.g., the mask)
+                Product linkedProduct = selectedVariant.getLinkedProduct();
+
+                if (linkedProduct.getStockQuantity() < itemDTO.getQuantity()) {
+                    throw new RuntimeException("Insufficient stock for bundled variant: " + selectedVariant.getVariantLabel());
                 }
 
-                // Use variant price if an override exists
+                // Use variant price if an override exists, else default to the linked product's true price
                 if (selectedVariant.getPriceOverride() != null) {
                     itemPrice = selectedVariant.getPriceOverride();
+                } else {
+                    itemPrice = linkedProduct.getPrice();
                 }
 
                 orderItem.setProductVariant(selectedVariant);
@@ -91,7 +93,6 @@ public class OrderService {
             total = total.add(lineTotal);
         }
 
-        // 4. Finalize and save
         order.setTotalAmount(total);
         order.setStatus(Order.OrderStatus.PENDING);
 
@@ -110,15 +111,15 @@ public class OrderService {
         // Deduct inventory only upon payment confirmation
         for (OrderItem item : order.getItems()) {
             if (item.getProductVariant() != null) {
-                // Deduct from specific variant stock
-                ProductVariant variant = item.getProductVariant();
-                if (variant.getStockQuantity() < item.getQuantity()) {
-                    throw new RuntimeException("Stock depleted before payment for variant: " + variant.getVariantType() + " " + variant.getVariantSize());
+                // Deduct from the linked product's stock (e.g., deduct the standalone mask stock)
+                Product linkedProduct = item.getProductVariant().getLinkedProduct();
+                if (linkedProduct.getStockQuantity() < item.getQuantity()) {
+                    throw new RuntimeException("Stock depleted before payment for variant: " + item.getProductVariant().getVariantLabel());
                 }
-                variant.setStockQuantity(variant.getStockQuantity() - item.getQuantity());
+                linkedProduct.setStockQuantity(linkedProduct.getStockQuantity() - item.getQuantity());
 
-                // Saving the parent product cascades the update to the variant
-                productRepository.save(item.getProduct());
+                // Save the linked product to update its independent stock pool
+                productRepository.save(linkedProduct);
             } else {
                 // Deduct from base product stock
                 Product product = item.getProduct();
