@@ -1,11 +1,15 @@
 package com.example.demo.Model;
 
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "categories")
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class Category {
 
     @Id
@@ -19,5 +23,5 @@ public class Category {
     private String description;
 
     @Column(name = "image_url")
-    private String imageUrl; // Useful for homepage category cards
+    private String imageUrl;
 }

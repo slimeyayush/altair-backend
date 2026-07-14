@@ -1,8 +1,7 @@
 package com.example.demo.controller;
 
 import com.example.demo.Model.Category;
-import com.example.demo.repo.CategoryRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.example.demo.service.CategoryService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -12,31 +11,25 @@ import java.util.List;
 @RequestMapping("/api/admin")
 public class CategoryController {
 
-    @Autowired
-    private CategoryRepository categoryRepository;
+    private final CategoryService categoryService;
+
+    public CategoryController(CategoryService categoryService) {
+        this.categoryService = categoryService;
+    }
 
     @GetMapping("/categories")
     public ResponseEntity<List<Category>> getAllCategories() {
-        return ResponseEntity.ok(categoryRepository.findAll());
+        return ResponseEntity.ok(categoryService.findAll());
     }
 
     @PostMapping("/categories")
-    public ResponseEntity<?> createCategory(@RequestBody Category category) {
-        try {
-            category.setId(null);
-            Category savedCategory = categoryRepository.save(category);
-            return ResponseEntity.ok(savedCategory);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error saving category. It might already exist.");
-        }
+    public ResponseEntity<Category> createCategory(@RequestBody Category category) {
+        return ResponseEntity.ok(categoryService.create(category));
     }
 
     @DeleteMapping("/categories/{id}")
-    public ResponseEntity<?> deleteCategory(@PathVariable Long id) {
-        if (!categoryRepository.existsById(id)) {
-            return ResponseEntity.notFound().build();
-        }
-        categoryRepository.deleteById(id);
+    public ResponseEntity<Void> deleteCategory(@PathVariable Long id) {
+        categoryService.delete(id);
         return ResponseEntity.ok().build();
     }
 }

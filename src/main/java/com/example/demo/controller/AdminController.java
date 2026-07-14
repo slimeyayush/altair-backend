@@ -1,247 +1,124 @@
 package com.example.demo.controller;
 
-import com.example.demo.DTO.AdminDTO;
-import com.example.demo.Model.AdminUser;
+import com.example.demo.DTO.request.AuthRequestDTO;
+import com.example.demo.DTO.request.OrderStatusDTO;
+import com.example.demo.DTO.request.StockUpdateDTO;
+import com.example.demo.DTO.response.AdminDTO;
 import com.example.demo.Model.Customer;
 import com.example.demo.Model.Order;
 import com.example.demo.Model.Product;
-import com.example.demo.repo.AdminUserRepository;
 import com.example.demo.repo.CustomerRepository;
 import com.example.demo.repo.OrderRepository;
-import com.example.demo.repo.ProductRepository;
+import com.example.demo.service.AdminService;
 import com.example.demo.service.OrderService;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.example.demo.service.ProductService;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/admin")
 public class AdminController {
 
-    @Autowired
-    private OrderRepository orderRepository;
+    private final OrderRepository orderRepository;
+    private final CustomerRepository customerRepository;
+    private final OrderService orderService;
+    private final ProductService productService;
+    private final AdminService adminService;
 
-    @Autowired
-    private ProductRepository productRepository;
+    public AdminController(OrderRepository orderRepository,
+                           CustomerRepository customerRepository,
+                           OrderService orderService,
+                           ProductService productService,
+                           AdminService adminService) {
+        this.orderRepository = orderRepository;
+        this.customerRepository = customerRepository;
+        this.orderService = orderService;
+        this.productService = productService;
+        this.adminService = adminService;
+    }
 
-    @Autowired
-    private CustomerRepository customerRepository;
-
-    @Autowired
-    private OrderService orderService;
-
-    @Autowired
-    private AdminUserRepository adminUserRepository;
-
-    @Autowired
-    private PasswordEncoder passwordEncoder;
+    // --- Admin accounts ---
 
     @PostMapping("/register-admin")
-    public ResponseEntity<?> registerNewAdmin(@RequestBody Map<String, String> payload) {
-        String newUsername = payload.get("username");
-        String rawPassword = payload.get("password");
+    public ResponseEntity<AdminDTO> registerNewAdmin(@Valid @RequestBody AuthRequestDTO payload) {
+        return ResponseEntity.ok(adminService.register(payload));
+    }
 
-        if (adminUserRepository.findByUsername(newUsername).isPresent()) {
-            return ResponseEntity.badRequest().body("Username already exists");
-        }
+    @GetMapping("/admins")
+    public ResponseEntity<List<AdminDTO>> getAllAdmins() {
+        return ResponseEntity.ok(adminService.findAll());
+    }
 
-        AdminUser newUser = new AdminUser();
-        newUser.setUsername(newUsername);
-        // Hash the password before saving to the database
-        newUser.setPassword(passwordEncoder.encode(rawPassword));
-
-        adminUserRepository.save(newUser);
-        return ResponseEntity.ok("New admin created successfully");
+    @DeleteMapping("/admins/{id}")
+    public ResponseEntity<Void> deleteAdmin(@PathVariable Long id) {
+        adminService.delete(id);
+        return ResponseEntity.ok().build();
     }
 
     // --- Orders ---
+
     @GetMapping("/orders")
     public List<Order> getAllOrders() {
         return orderRepository.findAll();
     }
 
-    @DeleteMapping("/inventory/{id}")
-    public ResponseEntity<?> deleteProduct(@PathVariable Long id) {
-        try {
-            productRepository.deleteById(id);
-            return ResponseEntity.ok().build();
-        } catch (org.springframework.dao.DataIntegrityViolationException e) {
-            return ResponseEntity.badRequest().body("Cannot delete product: It is linked to existing order records.");
-        } catch (Exception e) {
-            return ResponseEntity.internalServerError().body("Error deleting product.");
-        }
-    }
-
     @PostMapping("/orders/{id}/mark-paid")
     public ResponseEntity<Order> markOrderAsPaid(@PathVariable Long id) {
-        try {
-            Order paidOrder = orderService.confirmOrderPayment(id);
-            return ResponseEntity.ok(paidOrder);
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().build();
-        }
+        return ResponseEntity.ok(orderService.confirmOrderPayment(id));
     }
 
     @PutMapping("/orders/{id}/status")
-    public ResponseEntity<Order> updateOrderStatus(@PathVariable Long id, @RequestBody Map<String, String> payload) {
-        return orderRepository.findById(id).map(order -> {
-            order.setStatus(Order.OrderStatus.valueOf(payload.get("status").toUpperCase()));
-            return ResponseEntity.ok(orderRepository.save(order));
-        }).orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<Order> updateOrderStatus(@PathVariable Long id,
+                                                   @Valid @RequestBody OrderStatusDTO payload) {
+        return ResponseEntity.ok(orderService.updateStatus(id, payload.getStatus()));
     }
 
     @PostMapping("/orders/{id}/cancel")
-    public ResponseEntity<?> cancelOrder(@PathVariable Long id) {
-        try {
-            Order order = orderRepository.findById(id)
-                    .orElseThrow(() -> new RuntimeException("Order not found"));
-
-            String currentStatus = order.getStatus().toString();
-
-            if ("CANCELLED".equals(currentStatus)) {
-                return ResponseEntity.badRequest().body("Order is already cancelled.");
-            }
-
-            // Restock items ONLY if the order had already deducted them
-            if ("PAID".equals(currentStatus) || "SHIPPED".equals(currentStatus) || "DELIVERED".equals(currentStatus)) {
-                order.getItems().forEach(item -> {
-                    if (item.getProductVariant() != null) {
-                        // Restock the linked product (e.g., the mask)
-                        Product linkedProduct = item.getProductVariant().getLinkedProduct();
-                        linkedProduct.setStockQuantity(linkedProduct.getStockQuantity() + item.getQuantity());
-                        productRepository.save(linkedProduct);
-                    } else {
-                        // Restock the base product
-                        Product product = item.getProduct();
-                        product.setStockQuantity(product.getStockQuantity() + item.getQuantity());
-                        productRepository.save(product);
-                    }
-                });
-            }
-
-            order.setStatus(Order.OrderStatus.valueOf("CANCELLED"));
-            orderRepository.save(order);
-
-            return ResponseEntity.ok(order);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Failed to cancel order: " + e.getMessage());
-        }
+    public ResponseEntity<Order> cancelOrder(@PathVariable Long id) {
+        return ResponseEntity.ok(orderService.cancelOrder(id));
     }
 
     // --- Inventory ---
+
     @GetMapping("/inventory")
     public List<Product> getInventory() {
-        return productRepository.findAll();
-    }
-
-    @PutMapping("/inventory/{id}")
-    public ResponseEntity<Product> updateStock(@PathVariable Long id, @RequestBody Map<String, Integer> payload) {
-        return productRepository.findById(id).map(product -> {
-            product.setStockQuantity(payload.get("stockQuantity"));
-            return ResponseEntity.ok(productRepository.save(product));
-        }).orElse(ResponseEntity.notFound().build());
+        return productService.findAll();
     }
 
     @PostMapping("/products")
-    public ResponseEntity<?> createProduct(@RequestBody Product product) {
-        try {
-            product.setId(null);
+    public ResponseEntity<Product> createProduct(@RequestBody Product product) {
+        return ResponseEntity.ok(productService.create(product));
+    }
 
-            // Link the parent product to each child variant and resolve the linkedProduct
-            if (product.getVariants() != null) {
-                product.getVariants().forEach(variant -> {
-                    variant.setParentProduct(product);
-                    if (variant.getLinkedProduct() != null && variant.getLinkedProduct().getId() != null) {
-                        Product linked = productRepository.findById(variant.getLinkedProduct().getId())
-                                .orElseThrow(() -> new RuntimeException("Linked product ID " + variant.getLinkedProduct().getId() + " not found."));
-                        variant.setLinkedProduct(linked);
-                    }
-                });
-            }
-            if (product.getAdditionalImages() != null) {
-                product.getAdditionalImages().forEach(img -> img.setProduct(product));
-            }
+    @PutMapping("/products/{id}")
+    public ResponseEntity<Product> updateProduct(@PathVariable Long id, @RequestBody Product details) {
+        return ResponseEntity.ok(productService.update(id, details));
+    }
 
-            Product savedProduct = productRepository.save(product);
-            return ResponseEntity.ok(savedProduct);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error saving product: " + e.getMessage());
-        }
+    @PutMapping("/inventory/{id}")
+    public ResponseEntity<Product> updateStock(@PathVariable Long id,
+                                               @Valid @RequestBody StockUpdateDTO payload) {
+        return ResponseEntity.ok(productService.updateStock(id, payload));
     }
 
     @PutMapping("/inventory/{id}/toggle-visibility")
     public ResponseEntity<Product> toggleProductVisibility(@PathVariable Long id) {
-        return productRepository.findById(id).map(product -> {
-            product.setActive(!product.isActive());
-            return ResponseEntity.ok(productRepository.save(product));
-        }).orElse(ResponseEntity.notFound().build());
+        return ResponseEntity.ok(productService.toggleVisibility(id));
     }
 
-    @PutMapping("/products/{id}")
-    public ResponseEntity<?> updateProduct(@PathVariable Long id, @RequestBody Product productDetails) {
-        return productRepository.findById(id).map(existingProduct -> {
-            existingProduct.setName(productDetails.getName());
-            existingProduct.setBrand(productDetails.getBrand());
-            existingProduct.setDescription(productDetails.getDescription());
-            existingProduct.setPrice(productDetails.getPrice());
-            existingProduct.setOldPrice(productDetails.getOldPrice());
-            existingProduct.setStockQuantity(productDetails.getStockQuantity());
-            existingProduct.setCategory(productDetails.getCategory());
-            existingProduct.setTag(productDetails.getTag());
-            existingProduct.setImageUrl(productDetails.getImageUrl());
-
-            // 2. Update Variants safely
-            existingProduct.getVariants().clear();
-            if (productDetails.getVariants() != null) {
-                productDetails.getVariants().forEach(variant -> {
-                    variant.setParentProduct(existingProduct); // Link to parent
-                    if (variant.getLinkedProduct() != null && variant.getLinkedProduct().getId() != null) {
-                        Product linked = productRepository.findById(variant.getLinkedProduct().getId())
-                                .orElseThrow(() -> new RuntimeException("Linked product ID " + variant.getLinkedProduct().getId() + " not found."));
-                        variant.setLinkedProduct(linked);
-                    }
-                    existingProduct.getVariants().add(variant);
-                });
-            }
-            existingProduct.getAdditionalImages().clear();
-            if (productDetails.getAdditionalImages() != null) {
-                productDetails.getAdditionalImages().forEach(img -> {
-                    img.setProduct(existingProduct);
-                    existingProduct.getAdditionalImages().add(img);
-                });
-            }
-
-            Product savedProduct = productRepository.save(existingProduct);
-            return ResponseEntity.ok(savedProduct);
-        }).orElseGet(() -> ResponseEntity.notFound().build());
-    }
-
-    @GetMapping("/admins")
-    public ResponseEntity<List<AdminDTO>> getAllAdmins() {
-        List<AdminDTO> adminList = adminUserRepository.findAll().stream()
-                .map(admin -> new AdminDTO(admin.getId(), admin.getUsername()))
-                .collect(Collectors.toList());
-
-        return ResponseEntity.ok(adminList);
-    }
-
-    @DeleteMapping("/admins/{id}")
-    public ResponseEntity<?> deleteAdmin(@PathVariable Long id) {
-        if (!adminUserRepository.existsById(id)) {
-            return ResponseEntity.notFound().build();
-        }
-        adminUserRepository.deleteById(id);
+    @DeleteMapping("/inventory/{id}")
+    public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
+        productService.delete(id);
         return ResponseEntity.ok().build();
     }
 
+    // --- Customers ---
+
     @GetMapping("/customers")
     public ResponseEntity<List<Customer>> getAllCustomers() {
-        List<Customer> customers = customerRepository.findAll();
-        return ResponseEntity.ok(customers);
+        return ResponseEntity.ok(customerRepository.findAll());
     }
 }

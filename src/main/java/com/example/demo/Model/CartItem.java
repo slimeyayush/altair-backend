@@ -1,13 +1,17 @@
 package com.example.demo.Model;
 
-
-
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
 
-@Data
 @Entity
 @Table(name = "cart_items")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
 public class CartItem {
 
     @Id
@@ -22,6 +26,12 @@ public class CartItem {
     @ManyToOne
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
+
+    // ---> ADD THIS BLOCK RIGHT HERE <---
+    @ManyToOne
+    @JoinColumn(name = "product_variant_id", nullable = true)
+    private ProductVariant productVariant;
+    // -----------------------------------
 
     private int quantity;
 }

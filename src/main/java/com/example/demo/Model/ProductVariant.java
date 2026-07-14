@@ -3,12 +3,17 @@ package com.example.demo.Model;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 
 @Entity
 @Table(name = "product_variants")
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
+@JsonIgnoreProperties(ignoreUnknown = true) // Ignores extra React frontend artifacts
 public class ProductVariant {
 
     @Id
@@ -26,6 +31,10 @@ public class ProductVariant {
     @JoinColumn(name = "linked_product_id", nullable = false)
     @JsonIgnoreProperties({"variants", "additionalImages", "description", "category", "brand", "tag"})
     private Product linkedProduct;
+
+    // --- CRITICAL FIX: Temporary field to safely catch the flat ID from React ---
+    @Transient
+    private Long linkedProductId;
 
     // 3. Display name for the dropdown (e.g., "Add Medium Full Face Mask")
     @Column(nullable = false)

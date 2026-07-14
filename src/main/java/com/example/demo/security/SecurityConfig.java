@@ -1,7 +1,6 @@
-package com.example.demo.config;
+package com.example.demo.security;
 
 import com.example.demo.repo.AdminUserRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -19,42 +18,44 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.Arrays;
 import java.util.List;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
-    @Autowired
-    private JwtAuthenticationFilter jwtAuthFilter;
+    private final JwtAuthenticationFilter jwtAuthFilter;
+    private final FirebaseAuthenticationFilter firebaseAuthFilter;
+    private final AdminUserRepository adminUserRepository;
 
-    // NEW: Inject the Firebase filter you just created
-    @Autowired
-    private FirebaseAuthenticationFilter firebaseAuthFilter;
+    @Value("${cors.allowed-origins:https://altairhealth.in,https://www.altairhealth.in,https://altair-backend-494610.web.app,http://localhost:5173}")
+    private String allowedOrigins;
 
-    @Value("${FRONTEND_URL:http://localhost:5173}")
-    private String frontendUrl;
-
-    @Autowired
-    private AdminUserRepository adminUserRepository;
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthFilter,
+                          FirebaseAuthenticationFilter firebaseAuthFilter,
+                          AdminUserRepository adminUserRepository) {
+        this.jwtAuthFilter = jwtAuthFilter;
+        this.firebaseAuthFilter = firebaseAuthFilter;
+        this.adminUserRepository = adminUserRepository;
+    }
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/login").permitAll() // Admin Login
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN") // Admin Panel
-
-                        // PROTECT THE CART: Only Firebase users can access DB cart
+                        .requestMatchers("/api/auth/login").permitAll()
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        // Customer sync stays open (commented out as in the original); flip if needed:
+                        // .requestMatchers("/api/customer/**").authenticated()
                         .requestMatchers("/api/cart/**").authenticated()
                         .requestMatchers("/api/orders/checkout").authenticated()
-
+                        .requestMatchers("/api/payment/**").authenticated()
                         .anyRequest().permitAll()
                 )
-                // Firebase filter first, then Admin filter
                 .addFilterBefore(firebaseAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
@@ -63,14 +64,13 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-
-        configuration.setAllowedOrigins(List.of(frontendUrl));
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        configuration.setAllowedOrigins(Arrays.asList(allowedOrigins.split(",")));
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);
+        source.registerCorsConfiguration("/api/**", configuration);
         return source;
     }
 

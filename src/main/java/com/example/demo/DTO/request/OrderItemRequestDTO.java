@@ -1,4 +1,4 @@
-package com.example.demo.DTO;
+package com.example.demo.DTO.request;
 
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
@@ -14,7 +14,6 @@ public class OrderItemRequestDTO {
     @Min(value = 1, message = "Quantity must be at least 1")
     private Integer quantity;
 
-    // UPDATED: Accepts the specific database ID of the variant.
-    // This can be null if the user buys a standard product with no variants.
+    /** Null for standard products with no variants. */
     private Long variantId;
 }

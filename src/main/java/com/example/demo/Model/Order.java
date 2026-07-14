@@ -2,7 +2,10 @@ package com.example.demo.Model;
 
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -10,8 +13,12 @@ import java.util.List;
 
 @Entity
 @Table(name = "orders")
-@Data
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
 public class Order {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -24,7 +31,6 @@ public class Order {
     @Column(nullable = false)
     private String customerEmail;
 
-    // NEW: Add the shipping address column
     @Column(length = 500)
     private String shippingAddress;
 
@@ -45,4 +51,9 @@ public class Order {
     public enum OrderStatus {
         PENDING, PAID, SHIPPED, DELIVERED, CANCELLED
     }
+    @Column(name = "razorpay_order_id")
+    private String razorpayOrderId;
+
+    @Column(name = "razorpay_payment_id")
+    private String razorpayPaymentId;
 }

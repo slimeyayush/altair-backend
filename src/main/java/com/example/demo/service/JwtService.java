@@ -1,11 +1,10 @@
 package com.example.demo.service;
 
-
-
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.security.Key;
@@ -14,26 +13,35 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
 
+/**
+ * Issues and validates admin-side JWTs.
+ *
+ * Secret and TTL are now externalized via @Value. Defaults preserve the
+ * previously hardcoded values, so existing tokens remain valid through this
+ * refactor with zero config changes required.
+ */
 @Service
 public class JwtService {
 
-    // In production, store this securely in application.properties
-    private static final String SECRET_KEY = "YourSuperSecretKeyForJwtGenerationMustBeLongEnough!";
-    private static final long EXPIRATION_TIME = 1000 * 60 * 60 * 10; // 10 hours
+    @Value("${jwt.secret:YourSuperSecretKeyForJwtGenerationMustBeLongEnough!}")
+    private String secretKey;
+
+    @Value("${jwt.expiration-ms:36000000}") // 10 hours, same as before
+    private long expirationMs;
 
     private Key getSignInKey() {
-        return Keys.hmacShaKeyFor(SECRET_KEY.getBytes());
+        return Keys.hmacShaKeyFor(secretKey.getBytes());
     }
 
     public String generateToken(String username, String role) {
         Map<String, Object> claims = new HashMap<>();
-        claims.put("role", role); // This is where we identify the admin
+        claims.put("role", role);
 
         return Jwts.builder()
                 .setClaims(claims)
                 .setSubject(username)
                 .setIssuedAt(new Date(System.currentTimeMillis()))
-                .setExpiration(new Date(System.currentTimeMillis() + EXPIRATION_TIME))
+                .setExpiration(new Date(System.currentTimeMillis() + expirationMs))
                 .signWith(getSignInKey(), SignatureAlgorithm.HS256)
                 .compact();
     }
